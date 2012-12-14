@@ -1,0 +1,258 @@
+<%args>
+     $startdate => undef
+     $enddate   => undef
+     $queues    => undef
+     $byticket  => undef
+</%args>
+
+<& /Elements/Header, Title => $title &>
+<& /Elements/Tabs &>
+<hr>
+
+<%init>
+my ($start_date, $end_date, $effective_end_date, $title);
+
+$title = loc('Time worked report');
+
+$start_date = RT::Date->new($session{'CurrentUser'});
+$end_date   = RT::Date->new($session{'CurrentUser'});
+
+# If we have a value for start date, parse it into an RT::Date object
+if ($startdate) {
+  $start_date->Set(Format => 'unknown', Value => $startdate);
+  # And then get it back as an ISO string for display purposes, in the form field and
+  # report header
+  $startdate = $start_date->AsString(Format => 'ISO', Timezone => 'server');
+}
+
+# Same treatment for end date
+if ($enddate) {
+  $end_date->Set(Format => 'unknown', Value => $enddate);
+  $enddate = $end_date->AsString(Format => 'ISO', Timezone => 'server');
+}
+
+</%init>
+
+<form method="post" action="TimeWorkedReport.html">
+ <br />
+  <&|/l&>Start date</&>:
+  <& /Elements/SelectDate, Name => 'startdate', Default => ($startdate) ?  $start_date->AsString(Format => 'ISO', Timezone => 'server') : ''&>
+  (report will start from midnight on this day unless you indicate otherwise)
+ <br />
+  <&|/l&>End date</&>:
+  <& /Elements/SelectDate, Name => 'enddate', Default => ($enddate) ?  $end_date->AsString(Format => 'ISO', Timezone => 'server') : ''&>
+  (report will -not- be inclusive of this day unless you change the time from midnight)
+ <br />
+  <&|/l&>Queues</&>:
+  <& /Elements/SelectQueue, Multiple => 1, Name => 'queues', Default => ($queues) ? $queues : '' &>
+
+ <br />
+  <& /Elements/Checkbox, Name => 'byticket', Default => ($byticket) ? 'checked' : ''&>
+  Organize report by ticket instead of by person
+<& /Elements/Submit&>
+
+</form>
+
+
+<%perl>
+# TimeWorkedReport
+# Version 0.04  2009-09-28
+#
+# Fran Fabrizio, UAB CIS, fran@cis.uab.edu
+
+use strict;
+
+# if we are just getting here and the form values are empty, we are done
+if (!$startdate || !$enddate) {
+  return;
+}
+
+# get the queue object(s)
+my $queuesobj = new RT::Queues($session{CurrentUser});
+my ($queuelist, %queuesofinterest);
+
+# The user's choice of queues will come in from the web form in the $queues variable, which is
+# mapped to the SELECT field on the web interface for the report.  Unfortunately, if the user
+# chooses just one queue, $queues will have a scalar value, but if the user chooses multiple
+# queues, it will be an arrayref.  So we need to check for each case and process differently.
+#
+# What we want to construct is the %queuesofinterest simple lookup hash which defines a key
+# that is the queue ID for each queue selected, and the $queuelist string, which is just for
+# displaying the list of queues in the report header
+$queues = [ $queues ] unless ref($queues);
+
+for (@$queues) {
+  $queuesobj->Limit(FIELD => "Id", OPERATOR => "=", VALUE => $_, ENTRYAGGREGATOR => "OR");
+  $queuesofinterest{$_} = 1;
+}
+$queuelist = join ", ", map {$_->Name} @{$queuesobj->ItemsArrayRef};
+
+# hash to hold statistics
+# %stats will be a multilevel hash - first level keys are the usernames, second level keys are
+# the ticket IDs, and for each ticket, we store an anonymous hash with keys Subject and  TimeWorked
+# (this implies that a single ticket can live under two+ users if they both worked the ticket)
+my %stats;
+
+# Get a new transactions object to hold transaction search results for this ticket
+my $trans = new RT::Transactions($session{'CurrentUser'});
+
+# only in the period of interest
+$trans->Limit(FIELD => 'Created', OPERATOR => '>', VALUE => $startdate);
+$trans->Limit(FIELD => 'Created', OPERATOR => '<', VALUE => $enddate, ENTRYAGGREGATOR =>  'AND');
+
+# now start counting all the TimeTaken by examining transactions associated with this ticket
+while (my $tr = $trans->Next) {
+
+ # did this transaction take any time?  RT records this -either- in TimeTaken column or by
+ # indicating "TimeWorked" in the Field column, depending on how the user inputted the time.
+ if (($tr->TimeTaken != 0) || ($tr->Field && $tr->Field eq 'TimeWorked')) {
+   # Got a hot one - what ticket is this?
+   my $t = new RT::Ticket($session{'CurrentUser'});
+   $t->Load($tr->ObjectId);
+
+   if (!$t) {
+     # unable to retrieve a ticket for this transaction
+     # hopefully we don't ever reach here!
+     next;
+   } else {
+     # Is a queue selected and is this ticket in a queue we care about?
+     if ($queuelist && !$queuesofinterest{$t->Queue}) {
+       next;
+     }
+   }
+
+   # If this is time logged by user RT_System, it's the result of a ticket merge
+   # In order to avoid double-counting minutes in --byticket mode, or the less serious
+   # issue of displaying a report for user RT_System in normal mode, we skip this entirely
+   if ($tr->CreatorObj->Name eq 'RT_System') {
+     next;
+   }
+
+   # we've got some time to account for
+
+   # is this the first time this person is charging time to this ticket?
+   # if so, add this ticket subject to the data structure
+   if (!exists($stats{$tr->CreatorObj->Name}{$t->id}{Subject})) {
+     $stats{$tr->CreatorObj->Name}{$t->id}{Subject} = $t->Subject;
+   }
+
+   if ($tr->TimeTaken != 0) {
+     # this was a comment or correspondence where the user also added some time worked
+     # value of interest appears in Transaction's TimeTaken column
+     $stats{$tr->CreatorObj->Name}{$t->id}{TimeWorked} += $tr->TimeTaken;
+   } else {
+     # this was a direct update of the time worked field from the Basics or Jumbo ticket update page
+     # values of interest appear in Transaction's OldValue and NewValue columns
+     # RT does not use the TimeTaken column in this instance.
+     $stats{$tr->CreatorObj->Name}{$t->id}{TimeWorked} += $tr->NewValue - $tr->OldValue;
+   }
+ }
+}
+
+# report output starts here
+# output:
+#  normal user: their own time worked report, most worked ticket to least worked ticket
+#  superuser:   everyone's time worked report, in username alpha order, then by most worked to least worked
+#  superuser+byticket: most worked ticket first, with everyone's contribution ranked by  biggest contribution to smallest
+
+print "<h2>TIME WORKED REPORT FOR QUEUE(S) " . $queuelist . "</h2>";
+print "<h3>Date Range: $startdate TO $enddate</h3>";
+if ($byticket) {
+  print "<h3>Organized by Ticket</h3>";
+}
+print "<hr>";
+
+# if this person is not a superuser, we should only show them the report for themselves
+# which means we should remove all keys from %stats except their own username
+if (!($session{'CurrentUser'}->HasRight(Right => 'SuperUser', Object => $RT::System))) {
+  my %tempstats;
+  $tempstats{$session{CurrentUser}->Name} = $stats{$session{CurrentUser}->Name};
+  %stats = %tempstats;
+}
+
+if ($byticket) {
+  # if we're going to organize this by ticket, we need to transform the data first
+  # HAVE ENTRIES LIKE:  $stats{JoeUser}{12345}{TimeWorked} = 150
+  #                     $stats{JoeUser}{12345}{Subject} = "Fix the Fubar Widget"
+  # WANT ENTRIES LIKE:  $tstats{12345}{TotalTime} = 250
+  #                     $tstats{12345}{Subject} = "Fix the Fubar Widget"
+  #                     $tstats{12345}{People}{JoeUser} = 150
+  #                     $tstats{12345}{People}{JaneDoe} = 100
+
+  my %tstats;
+  for my $person (keys %stats) {
+    for my $tid (keys %{$stats{$person}}) {
+      # grab the subject line if you don't have it already
+      if (!exists($tstats{$tid}{Subject})) {
+        $tstats{$tid}{Subject} = $stats{$person}{$tid}{Subject};
+      }
+      # now increment total time for this ticket
+      $tstats{$tid}{TotalTime} += $stats{$person}{$tid}{TimeWorked};
+      # and record this user's contribution to this ticket
+      $tstats{$tid}{People}{$person} = $stats{$person}{$tid}{TimeWorked};
+    }
+  }
+
+  # Now emit the report
+  for my $tid (sort {$tstats{$b}{TotalTime} <=> $tstats{$a}{TotalTime}} keys %tstats) {
+    my $subject = $tstats{$tid}{Subject};
+    print "<H3><A TARGET=\"_TimeWorked\" HREF=\"/Ticket/Display.html?id=$tid\">$tid:  $subject</A></H3>";
+    print "<TABLE BORDER=0 CELLSPACING=5>";
+    printf("<TR><TH WIDTH=30></TH><TH>%dm</TH><TH>%.1fh</TH><TH>TOTAL TIME</TH></TR>",  $tstats{$tid}{TotalTime},($tstats{$tid}{TotalTime} / 60));
+    for my $person (sort {$tstats{$tid}{People}{$b} <=> $tstats{$tid}{People}{$a}} keys %{$tstats{$tid}{People}}) {
+      my $minutes = $tstats{$tid}{People}{$person};
+      printf("<TR><TD></TD><TD>%dm</TD><TD>%.1fh</TD><TD>%s</TD></TR>",$minutes,($minutes /60),$person);
+    }
+    print "</TABLE>";
+  }
+} else {
+  # the existing %stats data structure is perfect for the default report, no data transform  needed
+  for my $person (sort keys %stats) {
+    # get the person object, so we can get the FriendlyName to use as header
+    my $personobj = new RT::User($session{CurrentUser});
+    $personobj->Load($person);
+
+    print "<h3>" . $personobj->FriendlyName . "</h3>";
+    print "<TABLE BORDER=0 CELLSPACING=5>";
+    print "<TR><TH>MINUTES</TH><TH>HOURS</TH><TH>TICKET</TH></TR>";
+    my $totalMinutes = 0;
+    for my $tid (sort {$stats{$person}{$b}{TimeWorked} <=> $stats{$person}{$a}{TimeWorked}}  keys %{$stats{$person}}) {
+      my $minutes = $stats{$person}{$tid}{TimeWorked};
+      my $subject = $stats{$person}{$tid}{Subject};
+      print "<TR><TD ALIGN=RIGHT>${minutes}m</TD><TD ALIGN=RIGHT>" . sprintf("%.1fh",($minutes/60)) . "</TD>" .
+                "<TD><A TARGET=\"_TimeWorked\" HREF=\"/Ticket/Display.html?id=$tid\">$tid:  $subject</A></TD></TR>";
+      $totalMinutes += $minutes;
+    }
+    print "<TR><TD ALIGN=RIGHT><B>${totalMinutes}m</B></TD><TD ALIGN=RIGHT><B>" . sprintf("%.1fh",($totalMinutes/60)) . "</B></TD><TD><B>TOTALS</B></TD></TR>";
+    print "</TABLE>";
+  }
+}
+
+##### helper functions below
+
+sub form_date_string {
+ # expects seven input params - year, month, day, hour, minute, second, offset
+ my $year = $_[0] - 1900;
+ my $mon = $_[1] - 1;
+ my $day = $_[2];
+ my $hour = $_[3] ? $_[3] : 0;
+ my $min = $_[4] ? $_[4] : 0;
+ my $sec = $_[5] ? $_[5] : 0;
+ my $offset = $_[6] ? $_[6] : 0;
+
+ # convert to seconds since epoch, then adjust for the $offset, which is also in seconds
+ # we do this so we don't have to do fancy date arithmetic - we can just subtract one seconds
+ # value from the other seconds value
+ my $starttime = timelocal($sec,$min,$hour,$day,$mon,$year) - $offset;
+
+ # convert back to component parts now that we've adjusted for offset
+ # this gives us the components which represent the GMT time for the local time that was entered
+ # on the command line
+ ($sec,$min,$hour,$day,$mon,$year) = localtime($starttime);
+
+ # format the date string, padding with zeros if needed
+ return sprintf("%04d-%02d-%02d %02d:%02d:%02d", ($year+1900), ($mon+1), $day, $hour, $min, $sec);
+}
+
+</%perl>
+
