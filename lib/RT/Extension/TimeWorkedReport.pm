@@ -60,14 +60,20 @@ L<https://github.com/coffeemonster/rt-extension-timeworkedreport>
 Copyright 2000-2012 Fran Fabrizio <fabrizio-at-uab-dot-edu>
 CPAN Port for RT4 maintained by Alister West <alister@alisterwest.com>
 
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See http://dev.perl.org/licenses/ for more information.
+
 
 =head1 CHANGES
 
 This plugin is a cpan-port of the original wiki extension at
 L<http://requesttracker.wikia.com/wiki/TimeWorkedReport>
 
-1.01  2000- 2012 - Created by Fran Fabrizio 
-1.02  2012-12-12 - cpan-port by Alister West
+    1.01  2000- 2012 - Created by Fran Fabrizio 
+    1.02  2012-12-12 - cpan-dist port by Alister West
 
 =cut
 

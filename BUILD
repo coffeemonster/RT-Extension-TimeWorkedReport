@@ -19,4 +19,12 @@ Build CPAN dist
     make manifest
     # make upload (if cpan-upload installed)
 
+Build Requirements
+------------------
+
+    # M::I modules are bundled with the distribution.
+    Module::Install
+    Module::Install::ReadmeFromPod
+    Module::Install::RTx
+    Pod::Text
 
