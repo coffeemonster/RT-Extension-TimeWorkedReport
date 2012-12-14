@@ -17,7 +17,10 @@ Build CPAN dist
     make clean
     DIST_BUILD=1 perl Makefile.PL
     make manifest
-    # make upload (if cpan-upload installed)
+    make dist
+
+    # if cpan-upload installed
+    make upload
 
 Build Requirements
 ------------------
