@@ -1,19 +1,28 @@
-%# TimeWorkedReport - Version 1.3
+%# TimeWorkedReport - Version 1.4
 %# https://github.com/coffeemonster/rt-extension-timeworkedreport#readme
 <%args>
-    $startdate => undef
-    $enddate   => undef
-    $queues    => undef
-    $byticket  => undef
+    $startdate    => undef
+    $enddate      => undef
+    $byticket     => undef
+    $queues       => undef
+    $user         => undef
 </%args>
- 
+
 <& /Elements/Header, Title => $title &>
 <& /Elements/Tabs &>
+
 <style>
     th,td {text-align: left; }
+    .select-user-wrapper,
+    .select-queue-wrapper,
+    .select-queue-wrapper > label {
+        display: inline-block;
+        vertical-align: top;
+        padding-top: 5px;
+    }
 </style>
 <hr>
- 
+
 <%init>
     my ( $start_date, $end_date, $effective_end_date, $title );
 
@@ -38,7 +47,7 @@
     }
 </%init>
 
-<form method="post" action="TimeWorkedReport.html">
+<form method="get" action="TimeWorkedReport.html">
     <br />
 
     <&|/l&>Start date</&>:
@@ -53,9 +62,18 @@
     (report will -not- be inclusive of this day unless you change the time from midnight)
     <br />
 
-    <&|/l&>Queues</&>:
-    <& /Elements/SelectQueue, Multiple => 1, Name => 'queues', Default => ($queues) ? $queues : '' &>
-    <br />
+    <div>
+        <div class="select-queue-wrapper">
+            <label><&|/l&>Queues</&>:</label>
+            <& /Elements/SelectQueue, Multiple => 1, Name => 'queues', Id => 'queues', Default => ($queues||'') &>
+        </div>
+        <div class="select-user-wrapper">
+            <label><&|/l&>User</&>:</label>
+% my $userobject = RT::Queue->new($session{CurrentUser});
+<& /Elements/SelectOwnerDropdown, Name=>'user', Objects => [$userobject], Default => ($user||'') &>
+        </div>
+    </div>
+
 
     <& /Elements/Checkbox, Name => 'byticket', Default => ($byticket) ? 'checked' : ''&>
     Organize report by ticket instead of by person
@@ -103,16 +121,14 @@
     my (%stats, %tstats);
 
     # Get a new transactions object to hold transaction search results for this ticket
-    my $trans = new RT::Transactions( $session{'CurrentUser'} );
+    my $trans = RT::Transactions->new( $session{'CurrentUser'} );
 
     # only in the period of interest
     $trans->Limit( FIELD => 'Created', OPERATOR => '>', VALUE => $startdate );
-    $trans->Limit(
-        FIELD           => 'Created',
-        OPERATOR        => '<',
-        VALUE           => $enddate,
-        ENTRYAGGREGATOR => 'AND'
-    );
+    $trans->Limit( FIELD => 'Created', OPERATOR => '<', VALUE => $enddate, ENTRYAGGREGATOR => 'AND');
+    # only user of interest
+    $trans->Limit( FIELD => 'Creator', OPERATOR => '=', VALUE => $user, ENTRYAGGREGATOR => 'AND') if $user;
+
 
     # now start counting all the TimeTaken by examining transactions associated with this ticket
     while ( my $tr = $trans->Next ) {
@@ -207,7 +223,7 @@
     # output:
     #  normal user: their own time worked report, most worked ticket to least worked ticket
     #  superuser:   everyone's time worked report, in username alpha order, then by most worked to least worked
-    #  superuser+byticket: most worked ticket first, with everyone's contribution ranked by  biggest contribution to
+    #  superuser+byticket: most worked ticket first, with everyone's contribution ranked by biggest contribution to
     #  smallest
 
     print "<h2>TIME WORKED REPORT FOR QUEUE(S) " . $queuelist . "</h2>";
@@ -219,14 +235,14 @@
 
     # if this person is not a superuser, we should only show them the report for themselves
     # which means we should remove all keys from %stats except their own username
-    #if (!($session{'CurrentUser'}->HasRight(Right => 'SuperUser', Object => $RT::System))) {
-    if ( !( $session{'CurrentUser'} ->HasRight( Right => 'SeeGroup', Object => $RT::System ) ) ) {
-
+    if ( ! $session{'CurrentUser'}->HasRight( Right => 'SeeGroup', Object => $RT::System ) ) {
         my %tempstats;
         $tempstats{ $session{CurrentUser}->Name } = $stats{ $session{CurrentUser}->Name };
         %stats = %tempstats;
     }
 
+
+    # Report - grouped by ticket (with children nested if applicable)
     if ($byticket) {
 
         # calculate GrandTotal for parent tickets.
@@ -287,10 +303,12 @@
 % }
 
 </table>
+
 <%perl>
         }
 
     }
+    # Report - grouped by person
     else {
 
         # the existing %stats data structure is perfect for the default report, no data transform  needed
@@ -300,7 +318,7 @@
             my $personobj = new RT::User( $session{CurrentUser} );
             $personobj->Load($person);
 
-            print "<h3>" . $personobj->FriendlyName . "</h3>";
+            print "<h3>" . ($personobj->FriendlyName || $personobj->Name) . "</h3>";
             print "<table border=0 cellspacing=5>";
             print "<tr><th>MINUTES</th><th>HOURS</th><th>TICKET</th></tr>";
             my $totalMinutes = 0;

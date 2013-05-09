@@ -10,7 +10,7 @@ use warnings;
 
 =cut
 
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 
 1;
 
@@ -77,10 +77,11 @@ See http://dev.perl.org/licenses/ for more information.
 This plugin is a cpan-port of the original wiki extension at
 L<http://requesttracker.wikia.com/wiki/TimeWorkedReport>
 
-    1.01  2000- 2012 - Created by Fran Fabrizio 
-    1.02  2012-12-12 - cpan-dist port by Alister West
-    1.03  2013-05-01 - Nest children if relation exists (awest)
+    1.04  2013-05-08 - User dropdown to restrict to user "Alister West"
+    1.03  2013-05-01 - Nest children if relation exists "Alister West"
                      - Match versions mentioned in TimeWorkedReport.html
+    1.02  2012-12-12 - cpan-dist port by "Alister West"
+    1.01  2000- 2012 - Created by "Fran Fabrizio"
 
 =cut
 
