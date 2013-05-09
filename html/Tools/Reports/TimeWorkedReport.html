@@ -1,4 +1,4 @@
-%# TimeWorkedReport - Version 1.4
+%# TimeWorkedReport - Version 1.4a
 %# https://github.com/coffeemonster/rt-extension-timeworkedreport#readme
 <%args>
     $startdate    => undef
@@ -67,11 +67,14 @@
             <label><&|/l&>Queues</&>:</label>
             <& /Elements/SelectQueue, Multiple => 1, Name => 'queues', Id => 'queues', Default => ($queues||'') &>
         </div>
+%# Only superusers should see the user dropdown.
+% if ( $session{'CurrentUser'}->HasRight( Right => 'SeeGroup', Object => $RT::System ) ) {
         <div class="select-user-wrapper">
             <label><&|/l&>User</&>:</label>
 % my $userobject = RT::Queue->new($session{CurrentUser});
 <& /Elements/SelectOwnerDropdown, Name=>'user', Objects => [$userobject], Default => ($user||'') &>
         </div>
+% }
     </div>
 
 
