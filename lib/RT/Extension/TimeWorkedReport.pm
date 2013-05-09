@@ -55,6 +55,11 @@ L<http://search.cpan.org/dist/RT-Extension-TimeWorkedReport/>
 L<https://github.com/coffeemonster/rt-extension-timeworkedreport>
 
 
+=head1 SEE ALSO
+
+http://search.cpan.org/dist/RT-Extension-ActivityReports/
+
+
 =head1 LICENSE AND COPYRIGHT
 
 Copyright 2000-2012 Fran Fabrizio <fabrizio-at-uab-dot-edu>
