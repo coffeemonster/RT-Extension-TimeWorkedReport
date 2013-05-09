@@ -10,7 +10,7 @@ use warnings;
 
 =cut
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 1;
 
@@ -79,6 +79,8 @@ L<http://requesttracker.wikia.com/wiki/TimeWorkedReport>
 
     1.01  2000- 2012 - Created by Fran Fabrizio 
     1.02  2012-12-12 - cpan-dist port by Alister West
+    1.03  2013-05-01 - Nest children if relation exists (awest)
+                     - Match versions mentioned in TimeWorkedReport.html
 
 =cut
 
