@@ -1,12 +1,15 @@
-%# TimeWorkedReport - Version 1.4a
+%# TimeWorkedReport - Version 1.4
 %# https://github.com/coffeemonster/rt-extension-timeworkedreport#readme
 <%args>
     $startdate    => undef
     $enddate      => undef
+    $startdate_localtime    => undef
+    $enddate_localtime      => undef
     $byticket     => undef
     $queues       => undef
     $user         => undef
 </%args>
+
 
 <& /Elements/Header, Title => $title &>
 <& /Elements/Tabs &>
@@ -24,6 +27,8 @@
 <hr>
 
 <%init>
+    
+
     my ( $start_date, $end_date, $effective_end_date, $title );
 
     $title = loc('Time worked report');
@@ -37,13 +42,20 @@
 
         # And then get it back as an ISO string for display purposes, in the form field and
         # report header
-        $startdate = $start_date->AsString( Format => 'ISO', Timezone => 'server' );
+        $startdate = $start_date->AsString( Format => 'ISO', Timezone => 'UTC' );
+
+        # Store time in a variable to report back in current users Timezone
+        $startdate_localtime = $start_date->AsString( Format => 'ISO', Timezone => 'user' );
+
     }
 
     # Same treatment for end date
     if ($enddate) {
         $end_date->Set( Format => 'unknown', Value => $enddate );
-        $enddate = $end_date->AsString( Format => 'ISO', Timezone => 'server' );
+        $enddate = $end_date->AsString( Format => 'ISO', Timezone => 'UTC' );
+        
+        # Store time in a variable to report back in current users Timezone
+        $enddate_localtime = $end_date->AsString( Format => 'ISO', Timezone => 'user' );
     }
 </%init>
 
@@ -52,13 +64,13 @@
 
     <&|/l&>Start date</&>:
     <& /Elements/SelectDate, Name => 'startdate', Default => ($startdate) ?  $start_date->AsString(Format => 'ISO', 
-    Timezone => 'server') : ''&>
+    Timezone => 'user') : ''&>
     (report will start from midnight on this day unless you indicate otherwise)
     <br />
 
     <&|/l&>End date</&>:
     <& /Elements/SelectDate, Name => 'enddate', Default => ($enddate) ?  $end_date->AsString(Format => 'ISO', 
-    Timezone => 'server') : ''&>
+    Timezone => 'user') : ''&>
     (report will -not- be inclusive of this day unless you change the time from midnight)
     <br />
 
@@ -67,14 +79,11 @@
             <label><&|/l&>Queues</&>:</label>
             <& /Elements/SelectQueue, Multiple => 1, Name => 'queues', Id => 'queues', Default => ($queues||'') &>
         </div>
-%# Only superusers should see the user dropdown.
-% if ( $session{'CurrentUser'}->HasRight( Right => 'SeeGroup', Object => $RT::System ) ) {
         <div class="select-user-wrapper">
             <label><&|/l&>User</&>:</label>
 % my $userobject = RT::Queue->new($session{CurrentUser});
 <& /Elements/SelectOwnerDropdown, Name=>'user', Objects => [$userobject], Default => ($user||'') &>
         </div>
-% }
     </div>
 
 
@@ -95,6 +104,8 @@
     # get the queue object(s)
     my $queuesobj = new RT::Queues( $session{CurrentUser} );
     my ( $queuelist, %queuesofinterest );
+
+
 
     # The user's choice of queues will come in from the web form in the $queues variable, which is
     # mapped to the SELECT field on the web interface for the report.  Unfortunately, if the user
@@ -229,8 +240,9 @@
     #  superuser+byticket: most worked ticket first, with everyone's contribution ranked by biggest contribution to
     #  smallest
 
+    
     print "<h2>TIME WORKED REPORT FOR QUEUE(S) " . $queuelist . "</h2>";
-    print "<h3>Date Range: $startdate TO $enddate</h3>";
+    print "<h3>Date Range: $startdate_localtime TO $enddate_localtime</h3>";
     if ($byticket) {
         print "<h3>Organized by Ticket</h3>";
     }
@@ -367,6 +379,8 @@
         # this gives us the components which represent the GMT time for the local time that was entered
         # on the command line
         ( $sec, $min, $hour, $day, $mon, $year ) = localtime($starttime);
+
+
 
         # format the date string, padding with zeros if needed
         return sprintf(
