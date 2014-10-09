@@ -52,6 +52,7 @@ CHANGES
     This plugin is a cpan-port of the original wiki extension at
     <http://requesttracker.wikia.com/wiki/TimeWorkedReport>
 
+        1.05  2014-10-08 - Adjusted to account for UTC time in tickets, and users local timezone
         1.04  2013-05-08 - User dropdown to restrict to user "Alister West"
         1.03  2013-05-01 - Nest children if relation exists "Alister West"
                          - Match versions mentioned in TimeWorkedReport.html
