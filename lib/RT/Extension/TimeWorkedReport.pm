@@ -10,7 +10,7 @@ use warnings;
 
 =cut
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 1;
 
@@ -77,6 +77,7 @@ See http://dev.perl.org/licenses/ for more information.
 This plugin is a cpan-port of the original wiki extension at
 L<http://requesttracker.wikia.com/wiki/TimeWorkedReport>
 
+    1.05  2014-10-08 - Adjusted to account for UTC time in tickets, and users local timezone
        -  2013-05-08 - User dropdown only visable to superusers "Alister West"
     1.04  2013-05-08 - User dropdown to restrict to user "Alister West"
     1.03  2013-05-01 - Nest children if relation exists "Alister West"
