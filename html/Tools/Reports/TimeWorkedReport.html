@@ -149,8 +149,7 @@
 
         # did this transaction take any time?  RT records this -either- in TimeTaken column or by
         # indicating "TimeWorked" in the Field column, depending on how the user inputted the time.
-        if (   ( $tr->TimeTaken != 0 )
-            || ( $tr->Field && $tr->Field eq 'TimeWorked' ) )
+        if ( $tr->TimeTaken != 0 || ( $tr->Field && $tr->Field eq 'TimeWorked' ) )
         {
 
             # Got a hot one - what ticket is this?
@@ -178,13 +177,16 @@
                 next;
             }
 
-            # we've got some time to account for
+            # W00t - we have time to report on
+            my $date = $t->Created;
+            $date =~ s/ .*//;
+            my $date_id = "$date:" . $t->id;
 
             # is this the first time this person is charging time to this ticket?
             # if so, add this ticket subject to the data structure
-            if ( !exists( $stats{ $tr->CreatorObj->Name }{ $t->id }{Subject} ) ) {
+            if ( !exists( $stats{ $tr->CreatorObj->Name }{ $date_id }{Subject} ) ) {
 
-                $stats{ $tr->CreatorObj->Name }{ $t->id }{Subject} = $t->Subject;
+                $stats{ $tr->CreatorObj->Name }{ $date_id }{Subject} = $t->Subject;
 
             }
 
@@ -211,20 +213,27 @@
 
             if ( $tr->TimeTaken != 0 ) {
 
-                # this was a comment or correspondence where the user also added some time worked
-                # value of interest appears in Transaction's TimeTaken column
-                $stats{ $tr->CreatorObj->Name }{ $t->id }{TimeWorked} += $tr->TimeTaken;
+                # !*! Time Time Time !*!
+                # Updated from Basic/Jumbo or Comment
+
+                # user-centric
+                $stats{ $tr->CreatorObj->Name }{ $date_id }{TimeWorked} += $tr->TimeTaken;
 
                 # ticket-centric
                 $tstats{ $t->id }{People}{$tr->CreatorObj->Name} += $tr->TimeTaken;
                 $tstats{ $t->id }{TotalTime} += $tr->TimeTaken;
+
             }
             else {
+
+                # DEPRICATED
+                # RT now updates TimeTaken from Basic and Jumbo views
+                # Leaving functionality here for now just-in-case but will be removed
 
                 # this was a direct update of the time worked field from the Basics or Jumbo ticket update page
                 # values of interest appear in Transaction's OldValue and NewValue columns
                 # RT does not use the TimeTaken column in this instance.
-                $stats{ $tr->CreatorObj->Name }{ $t->id }{TimeWorked} += $tr->NewValue - $tr->OldValue;
+                $stats{ $tr->CreatorObj->Name }{ $date_id }{TimeWorked} += $tr->NewValue - $tr->OldValue;
 
                 $tstats{ $t->id }{People}{$tr->CreatorObj->Name} += $tr->NewValue - $tr->OldValue;
                 $tstats{ $t->id }{TotalTime} += $tr->NewValue - $tr->OldValue;
@@ -335,22 +344,30 @@
 
             print "<h3>" . ($personobj->FriendlyName || $personobj->Name) . "</h3>";
             print "<table border=0 cellspacing=5>";
-            print "<tr><th>MINUTES</th><th>HOURS</th><th>TICKET</th></tr>";
+            print "<tr><th>DATE</th><th>MINUTES</th><th>HOURS</th><th>TICKET</th></tr>";
             my $totalMinutes = 0;
             for my $tid (
                 sort {
+                    $stats{$person}{$b} <=> $stats{$person}{$a}
+                    ||
                     $stats{$person}{$b}{TimeWorked} <=> $stats{$person}{$a}{TimeWorked}
-                } keys %{ $stats{$person} }
+                }
+                keys %{ $stats{$person} }
             ) {
+                my ($date, $id) = split /:/, $tid;
                 my $minutes = $stats{$person}{$tid}{TimeWorked};
-                my $subject = "$tid:  " . $stats{$person}{$tid}{Subject};
-                my $href = RT->Config->Get('WebPath'). "/Ticket/Display.html?id=$tid";
-                print "<tr><td align=right>${minutes}m</td><td align=right>"
-                    . sprintf( "%.1fh", ( $minutes / 60 ) ) . "</td>"
-                    . "<td><a target='_TimeWorked' href='$href'>$subject</a></td></tr>";
+                my $subject = "$id: " . $stats{$person}{$tid}{Subject};
+                my $href = RT->Config->Get('WebPath'). "/Ticket/Display.html?id=$id";
+                print "
+                    <tr>
+                        <td>${date}</td>
+                        <td align=right>${minutes}m</td>
+                        <td align=right>" . sprintf( "%.1fh", ( $minutes / 60 ) ) . "</td>
+                        <td><a target='_TimeWorked' href='$href'>$subject</a></td>
+                    </tr>";
                 $totalMinutes += $minutes;
             }
-            print "<tr><td align=right><b>${totalMinutes}m</b></td><td align=right><b>"
+            print "<tr><td></td><td align=right><b>${totalMinutes}m</b></td><td align=right><b>"
                 . sprintf( "%.1fh", ( $totalMinutes / 60 ) )
                 . "</b></td><td><b>TOTALS</b></td></tr>";
             print "</table>";
